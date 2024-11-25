@@ -1,26 +1,34 @@
 /**
  * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * This includes a Discord theme color palette for both light and dark modes.
  */
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+// Discord color palette
+const discordLight = {
+  text: '#2C2F33',
+  background: '#FFFFFF',
+  tint: '#7289DA', // Discord blue
+  icon: '#99AAB5',
+  tabIconDefault: '#99AAB5',
+  tabIconSelected: '#fff',
+};
+
+const discordDark = {
+  text: '#FFFFFF',
+  background: '#23272A',
+  tint: '#7289DA', // Discord blue
+  icon: '#99AAB5',
+  tabIconDefault: '#99AAB5',
+  tabIconSelected: '#fff',
+};
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    ...discordLight,
+    // Other light mode colors can be added here
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    ...discordDark,
+    // Other dark mode colors can be added here
   },
 };

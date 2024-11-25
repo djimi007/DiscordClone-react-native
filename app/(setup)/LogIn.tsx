@@ -8,7 +8,7 @@ import {
   Platform,
 } from "react-native";
 import React, { useState } from "react";
-import { Image, ImageBackground } from "expo-image";
+import { ImageBackground } from "expo-image";
 import { wp, hp } from "@/utils/dimonsion";
 import { ScrollView } from "react-native-gesture-handler";
 import { router } from "expo-router";
