@@ -1,28 +1,30 @@
 import { View, Text, StyleSheet } from "react-native";
 import React from "react";
-import { wp } from "@/utils/dimonsion";
+import { hp, wp } from "@/utils/dimonsion";
 import { Colors } from "@/constants/Colors";
+import LeftTabs from "@/components/Home/LeftSide/LeftTab";
+import ServerContent from "@/components/Home/PageContent//ServerContent";
 
 const Page = () => {
   return (
-    <View style={styles.container}>
+    <View className="flex-row flex-1 bg-zinc-950">
       {/* create servers icons and chat in the right */}
-      <View style={styles.serversContainer}></View>
+
+      <View>
+        <LeftTabs />
+      </View>
 
       {/* second part display content of serevr   */}
-      <View></View>
+      <View style={styles.serverChats}>
+        <ServerContent />
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  serversContainer: {
-    flex: 1,
-    width: wp(25),
-    backgroundColor: Colors.dark.background,
+  serverChats: {
+    width: wp(75),
   },
 });
 

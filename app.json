@@ -16,6 +16,10 @@
     "ios": {
       "supportsTablet": true
     },
+    "androidStatusBar": {
+      "backgroundColor": "#09090b",
+      "translucent": false
+    },
     "android": {
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {

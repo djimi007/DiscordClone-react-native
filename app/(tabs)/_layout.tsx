@@ -18,7 +18,8 @@ const iconColor = {
 const Layout = () => {
   return (
     <>
-      <StatusBar backgroundColor={Colors.dark.background} />
+      <StatusBar className="bg-zinc-950" />
+
       <Tabs
         screenOptions={{
           animation: "shift",
