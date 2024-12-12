@@ -42,22 +42,39 @@ const SignUp = () => {
     }
   };
 
-  return <Redirect href="/(tabs)/" />;
+  return <Redirect href="/(tabs)" />;
 
   return (
     <KeyboardAvoidingView
-      className="flex-1"
+      style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"} // Adjust behavior based on platform
     >
-      <View className="flex-1">
+      <View style={{ flex: 1 }}>
         <ImageBackground
           source="https://mrwallpaper.com/images/hd/english-lavender-on-light-purple-background-0ejk4r6kloeue35q.jpg"
           style={{ height: hp(110), width: wp(100) }}
           contentFit="cover"
         >
-          <Text className="font-serif font-bold text-3xl self-center top-[15%]">Sign Up </Text>
+          <Text
+            style={{
+              fontFamily: "serif",
+              fontWeight: "bold",
+              fontSize: 24,
+              alignSelf: "center",
+              marginTop: "15%",
+            }}
+          >
+            Sign Up{" "}
+          </Text>
 
-          <View className="top-[31%]" style={{ flex: 1, alignItems: "center", rowGap: hp(3) }}>
+          <View
+            style={{
+              flex: 1,
+              alignItems: "center",
+              rowGap: hp(3),
+              top: hp(31),
+            }}
+          >
             <TextInput
               cursorColor={"black"}
               style={styles.inputText}
@@ -79,11 +96,21 @@ const SignUp = () => {
               placeholder="Password"
               value={password}
             />
-            <Text className="color-black self-start ml-[5%]">
+            <Text
+              style={{
+                color: "black",
+                alignSelf: "flex-start",
+                marginLeft: "5%",
+              }}
+            >
               I already have an account{" "}
               <Text
                 onPress={() => router.replace("/LogIn")}
-                className="font-bold underline color-blue-800"
+                style={{
+                  fontFamily: "bold",
+                  textDecorationLine: "underline",
+                  color: "blue",
+                }}
               >
                 Login
               </Text>

@@ -7,7 +7,13 @@ import ServerContent from "@/components/Home/PageContent//ServerContent";
 
 const Page = () => {
   return (
-    <View className="flex-row flex-1 bg-zinc-950">
+    <View
+      style={{
+        flexDirection: "row",
+        flex: 1,
+        backgroundColor: Colors.dark.backgroundColor,
+      }}
+    >
       {/* create servers icons and chat in the right */}
 
       <View>

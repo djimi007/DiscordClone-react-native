@@ -1,4 +1,4 @@
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, StyleSheet } from "react-native";
 import React from "react";
 import { AntDesign } from "@expo/vector-icons";
 import { wp } from "@/utils/dimonsion";
@@ -11,8 +11,6 @@ interface Props {
   name: keyof typeof AntDesign.glyphMap;
 }
 
-const iconStyle = "bg-purple-500 p-[10%] rounded-xl";
-
 const CustomIcon = ({
   iconName,
   onPress,
@@ -22,7 +20,7 @@ const CustomIcon = ({
 }) => {
   return (
     <AntDesign
-      className={iconStyle}
+      style={styles.icon}
       name={iconName}
       size={wp(9)}
       onPress={onPress}
@@ -51,4 +49,11 @@ const FullIndecator = ({
   );
 };
 
+const styles = StyleSheet.create({
+  icon: {
+    backgroundColor: "#a855f7",
+    padding: "10%",
+    borderRadius: wp(3),
+  },
+});
 export default FullIndecator;
