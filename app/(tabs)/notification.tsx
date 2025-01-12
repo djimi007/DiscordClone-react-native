@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useId } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -17,78 +17,80 @@ interface Message {
 }
 
 const ChatScreen = () => {
-  const serverUrl = `http://192.168.1.5:3000`;
+  const serverUrl = `http://192.168.1.7:3000`;
 
   const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
-  const flatListRef = useRef<FlatList>(null);
-  const currentUserId = "66dc82808ced9967a119a9e6";
-  const receiverId = "675ae78ecfe770f56a7ab0e4";
+  const flatListRef = useRef<FlatList<Message> | null>(null);
+  const SENDER_ID = "66dc82808ced9967a119a9e6";
+  const RECIVER_ID = "675ae78ecfe770f56a7ab0e4";
 
   const [isEnabled, setIsEnabled] = useState(false);
-  const toggleSwitch = () => setIsEnabled((previousState) => !previousState);
+
+  const senderId = isEnabled ? SENDER_ID : RECIVER_ID;
+  const receiverId = isEnabled ? RECIVER_ID : SENDER_ID;
 
   useEffect(() => {
-    // Create socket connection
+    flatListRef.current?.scrollToEnd({ animated: true });
+  }, [messages.length]);
+
+  useEffect(() => {
     const newSocket = io(serverUrl, {
       query: {
-        senderId: isEnabled ? currentUserId : receiverId,
-        receiverId: isEnabled ? receiverId : currentUserId,
+        senderId,
+        receiverId,
       },
     });
 
-    // Connect to socket
     newSocket.on("connect", () => {
       console.log("Socket connected");
       setSocket(newSocket);
     });
 
-    // Listen for received messages
-    newSocket.on("receiveMessage", (data: Message) => {
-      console.log("Received message:", data);
-      setMessages((prevMessages) => [data, ...prevMessages]);
+    newSocket.on("All-Messages", (data) => {
+      console.log(JSON.stringify(data, null, 2));
+      setMessages(data);
     });
 
-    // Cleanup on component unmount
+    newSocket.on("receiveMessage", (data: Message) => {
+      console.log("Received message:", data);
+      setMessages((prevMessages) => [...prevMessages, data]);
+    });
+
     return () => {
       newSocket.disconnect();
     };
   }, [isEnabled]);
 
-  // Send message function
   const sendMessage = () => {
     if (!inputMessage.trim() || !socket) return;
 
     const messageData = {
-      senderId: isEnabled ? currentUserId : receiverId,
-      reciverId: isEnabled ? receiverId : currentUserId,
+      senderId,
+      reciverId: receiverId,
       message: inputMessage,
     };
 
-    // Emit message to server
     socket?.emit("sendMessage", messageData);
 
-    // Add message to local state
     setMessages((prevMessages) => [
-      {
-        senderId: isEnabled ? currentUserId : receiverId,
-        message: inputMessage,
-        reciverId: !isEnabled ? currentUserId : receiverId,
-      },
       ...prevMessages,
+      {
+        senderId,
+        message: inputMessage,
+        reciverId: receiverId,
+      },
     ]);
-
-    // Clear input
     setInputMessage("");
   };
 
-  // Render individual message
+  const toggleSwitch = () => setIsEnabled((previousState) => !previousState);
   const renderMessage = ({ item }: { item: Message }) => (
     <View
       style={[
         styles.messageContainer,
-        item.senderId === (isEnabled ? currentUserId : receiverId)
+        item.senderId === senderId
           ? styles.sentMessage
           : styles.receivedMessage,
       ]}
@@ -99,7 +101,6 @@ const ChatScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* Messages List */}
       <Switch
         trackColor={{ false: "#767577", true: "#81b0ff" }}
         thumbColor={isEnabled ? "#f5dd4b" : "#f4f3f4"}
@@ -113,10 +114,8 @@ const ChatScreen = () => {
         renderItem={renderMessage}
         keyExtractor={(item, index) => index.toString()}
         contentContainerStyle={styles.messagesList}
-        inverted
       />
 
-      {/* Message Input */}
       <View style={styles.inputContainer}>
         <TextInput
           style={styles.input}

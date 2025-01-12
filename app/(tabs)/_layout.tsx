@@ -1,12 +1,11 @@
-import { Ionicons } from "@expo/vector-icons";
+import { EvilIcons, Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React, { useState } from "react";
 import { Image } from "expo-image";
 import { wp } from "@/utils/dimonsion";
-import { StatusBar, Text } from "react-native";
+import { StatusBar, StyleSheet, Text, View } from "react-native";
 import { Colors } from "@/constants/Colors";
 export const unstable_settings = {
-  // Ensure any route can link back to `/`
   initialRouteName: "tab1",
 };
 
@@ -51,6 +50,24 @@ const Layout = () => {
         <Tabs.Screen
           name="notification"
           options={{
+            headerRight: () => (
+              <View style={styles.headerRightContainer}>
+                <Ionicons
+                  name="camera"
+                  size={wp(5)}
+                  color={"white"}
+                  style={styles.headerIcons}
+                  onPress={() => {}}
+                />
+                <Ionicons
+                  name="videocam"
+                  size={wp(5)}
+                  color={"white"}
+                  style={styles.headerIcons}
+                  onPress={() => {}}
+                />
+              </View>
+            ),
             tabBarIcon: ({ focused }) => (
               <Ionicons
                 name="notifications"
@@ -100,4 +117,17 @@ const TabBarLabel = ({ focused, text }: { focused: boolean; text: string }) => (
   </Text>
 );
 
+const styles = StyleSheet.create({
+  headerRightContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginRight: wp(2),
+    gap: wp(2),
+  },
+  headerIcons: {
+    padding: wp(2),
+    borderRadius: wp(3),
+    backgroundColor: "black",
+  },
+});
 export default Layout;
