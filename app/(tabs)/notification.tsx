@@ -1,3 +1,4 @@
+import { SENDER_ID, RECEIVER_ID, serverUrl } from "@/utils/constants";
 import React, { useState, useEffect, useRef } from "react";
 import {
   View,
@@ -17,19 +18,15 @@ interface Message {
 }
 
 const ChatScreen = () => {
-  const serverUrl = `http://192.168.1.7:3000`;
-
   const [socket, setSocket] = useState<Socket | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const flatListRef = useRef<FlatList<Message> | null>(null);
-  const SENDER_ID = "66dc82808ced9967a119a9e6";
-  const RECIVER_ID = "675ae78ecfe770f56a7ab0e4";
 
   const [isEnabled, setIsEnabled] = useState(false);
 
-  const senderId = isEnabled ? SENDER_ID : RECIVER_ID;
-  const receiverId = isEnabled ? RECIVER_ID : SENDER_ID;
+  const senderId = isEnabled ? SENDER_ID : RECEIVER_ID;
+  const receiverId = isEnabled ? RECEIVER_ID : SENDER_ID;
 
   useEffect(() => {
     flatListRef.current?.scrollToEnd({ animated: true });
@@ -49,12 +46,10 @@ const ChatScreen = () => {
     });
 
     newSocket.on("All-Messages", (data) => {
-      console.log(JSON.stringify(data, null, 2));
       setMessages(data);
     });
 
     newSocket.on("receiveMessage", (data: Message) => {
-      console.log("Received message:", data);
       setMessages((prevMessages) => [...prevMessages, data]);
     });
 

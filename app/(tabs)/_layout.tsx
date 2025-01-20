@@ -1,10 +1,11 @@
-import { EvilIcons, Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Feather, Ionicons } from "@expo/vector-icons";
+import { router, Tabs } from "expo-router";
 import React, { useState } from "react";
 import { Image } from "expo-image";
 import { wp } from "@/utils/dimonsion";
 import { StatusBar, StyleSheet, Text, View } from "react-native";
 import { Colors } from "@/constants/Colors";
+
 export const unstable_settings = {
   initialRouteName: "tab1",
 };
@@ -52,19 +53,22 @@ const Layout = () => {
           options={{
             headerRight: () => (
               <View style={styles.headerRightContainer}>
-                <Ionicons
-                  name="camera"
+                <Feather
+                  name="phone"
                   size={wp(5)}
                   color={"white"}
                   style={styles.headerIcons}
                   onPress={() => {}}
                 />
+
                 <Ionicons
                   name="videocam"
                   size={wp(5)}
                   color={"white"}
                   style={styles.headerIcons}
-                  onPress={() => {}}
+                  onPress={() => {
+                    router.push("/VideoAndCalls/webRtc");
+                  }}
                 />
               </View>
             ),
