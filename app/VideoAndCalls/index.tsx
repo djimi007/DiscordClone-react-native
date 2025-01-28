@@ -1,259 +1,212 @@
-import { RECEIVER_ID, SENDER_ID, serverUrl } from "@/utils/constants";
+import { serverUrl } from "@/utils/constants";
 import React, { useEffect, useRef, useState } from "react";
-import { Button, View, StyleSheet, Switch } from "react-native";
-import {
-  mediaDevices,
-  MediaStream,
-  RTCIceCandidate,
-  RTCPeerConnection,
-  RTCSessionDescription,
-  RTCView,
-} from "react-native-webrtc";
-import { isEnabled } from "react-native/Libraries/Performance/Systrace";
+import { View, Text, Button, StyleSheet, ScrollView } from "react-native";
+import { RTCView, mediaDevices, MediaStream } from "react-native-webrtc"; // Import mediaDevices
 import { io, Socket } from "socket.io-client";
 
-interface RTCPeerConnectionIceEvent {
-  candidate: RTCIceCandidate | null;
-}
+type OfferProp = {
+  offererUserName: string;
+  offer: OfferProp;
+  offerIceCandidates: [];
+  answererUserName: string;
+  answer: OfferProp | null;
+  answererIceCandidates: [];
+};
 
-interface EventHandlers {
-  watcher: (data: { watcherId: string }) => void;
-  candidate: (data: { peerId: string; candidate: RTCIceCandidateInit }) => void;
-  offer: (data: { peerId: string; offer: RTCSessionDescription }) => void;
-  answer: (data: { peerId: string; answer: RTCSessionDescription }) => void;
-  disconnectPeer: (data: { peerId: string }) => void;
-}
-
-function generateRandomId(): string {
-  return Math.random().toString(36).substring(2) + Date.now().toString(36);
-}
-
-const VideoPage = () => {
-  const [isEnabled, setIsEnabled] = useState(false);
-
-  const senderId = isEnabled ? SENDER_ID : RECEIVER_ID;
-  const receiverId = isEnabled ? RECEIVER_ID : SENDER_ID;
-
-  const userId = React.useMemo(() => generateRandomId(), []);
-  const [socket, setSocket] = useState<Socket | null>(null);
-
+const App = () => {
+  const [userName] = useState(`Rob-${Math.floor(Math.random() * 100000)}`);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(
+    new MediaStream()
+  );
+  const [peerConnection, setPeerConnection] =
+    useState<RTCPeerConnection | null>(null);
+  const [didIOffer, setDidIOffer] = useState(false);
+  const [offers, setOffers] = useState<OfferProp[]>([]); // State to hold incoming offers
+  const localVideoRef = useRef<typeof RTCView>(null);
+  const remoteVideoRef = useRef<typeof RTCView>(null);
+  const socketRef = useRef<Socket | null>(null); // Ref to hold socket connection
 
-  const peerConnections = useRef(new Map<string, RTCPeerConnection>());
-
-  const config = {
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  const peerConfiguration = {
+    iceServers: [
+      {
+        urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"],
+      },
+    ],
   };
-  const toggleSwitch = () => setIsEnabled((previousState) => !previousState);
 
   useEffect(() => {
-    const newSocket = io(serverUrl, { query: { userId } });
-    setSocket(newSocket);
+    socketRef.current = io(serverUrl, {
+      auth: {
+        userName,
+        password: "x",
+      },
+    });
 
-    const eventHandlers: EventHandlers = {
-      watcher: handleWatcher,
-      candidate: handleCandidate,
-      offer: handleOffer,
-      answer: handleAnswer,
-      disconnectPeer: handleDisconnectPeer,
-    };
+    socketRef.current.on("availableOffers", (offers) => {
+      // console.log(offers);
+      setOffers(offers); // Update state with available offers
+    });
 
-    Object.entries(eventHandlers).forEach(([event, handler]) => {
-      newSocket.on(event as keyof EventHandlers, handler);
+    socketRef.current.on("newOfferAwaiting", (offers) => {
+      // console.log(offers);
+      setOffers((prevOffers) => [...prevOffers, ...offers]); // Append new offers
+    });
+
+    socketRef.current.on("answerResponse", async (offerObj) => {
+      console.log("hadi men answerResponse", offerObj);
+      if (peerConnection) {
+        await peerConnection.setRemoteDescription(offerObj.answer);
+      }
+    });
+
+    socketRef.current.on("receivedIceCandidateFromServer", (iceCandidate) => {
+      if (peerConnection) {
+        peerConnection.addIceCandidate(new RTCIceCandidate(iceCandidate));
+      }
     });
 
     return () => {
-      Object.keys(eventHandlers).forEach((event) => {
-        newSocket.off(event as keyof EventHandlers);
+      socketRef.current?.disconnect();
+    };
+  }, [userName, peerConnection]);
+
+  const fetchUserMedia = async () => {
+    try {
+      const stream = await mediaDevices.getUserMedia({
+        video: true,
+        audio: true, // Enable audio if needed
       });
-      newSocket.disconnect();
-      peerConnections.current.forEach((conn) => conn.close());
-      peerConnections.current.clear();
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function setupStream() {
-      try {
-        const stream = await mediaDevices.getUserMedia({
-          audio: true,
-          video: { facingMode: "user" },
-        });
-        if (mounted) {
-          setLocalStream(stream);
-          if (socket) {
-            socket.emit("broadcaster");
-          }
-        }
-      } catch (error) {
-        console.error("Error getting local media stream:", error);
-      }
-    }
-
-    setupStream();
-
-    return () => {
-      mounted = false;
-      localStream?.getTracks().forEach((track) => track.stop());
-    };
-  }, []);
-
-  const handleWatcher = ({ watcherId }: { watcherId: string }) => {
-    const connection = new RTCPeerConnection(config);
-    peerConnections.current.set(watcherId, connection);
-    localStream?.getTracks().forEach((track) => {
-      connection.addTrack(track, localStream as MediaStream);
-    });
-    connection.addEventListener(
-      "icecandidate",
-      (event: RTCPeerConnectionIceEvent) => {
-        if (event.candidate) {
-          socket?.emit("candidate", {
-            peerId: watcherId,
-            candidate: event.candidate,
-          });
-        }
-      }
-    );
-    (async () => {
-      try {
-        const offer = await connection.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true,
-        });
-        await connection.setLocalDescription(offer);
-        socket?.emit("offer", {
-          peerId: watcherId,
-          offer: connection.localDescription,
-        });
-      } catch (error) {
-        console.error("Error creating offer:", error);
-      }
-    })();
-  };
-
-  const handleCandidate = ({
-    peerId,
-    candidate,
-  }: {
-    peerId: string;
-    candidate: RTCIceCandidateInit;
-  }) => {
-    const pc = peerConnections.current.get(peerId);
-    if (pc) {
-      pc.addIceCandidate(new RTCIceCandidate(candidate));
+      setLocalStream(stream);
+    } catch (err) {
+      console.log(err);
     }
   };
 
-  const handleOffer = ({
-    peerId,
-    offer,
-  }: {
-    peerId: string;
-    offer: RTCSessionDescription;
-  }) => {
-    const connection = new RTCPeerConnection(config);
-    peerConnections.current.set(peerId, connection);
-    connection.setRemoteDescription(new RTCSessionDescription(offer));
+  const createPeerConnection = async (offerObj = null) => {
+    const pc = new RTCPeerConnection(peerConfiguration);
+    setPeerConnection(pc);
 
-    connection.addEventListener("track", (event) => {
-      if (event.track && event.streams?.[0]) {
-        setRemoteStream(event.streams[0]);
+    localStream &&
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
+      });
+
+    pc.addEventListener("icecandidate", (e) => {
+      if (e.candidate) {
+        socketRef.current?.emit("sendIceCandidateToSignalingServer", {
+          iceCandidate: e.candidate,
+          iceUserName: userName,
+          didIOffer,
+        });
       }
     });
 
-    (async () => {
+    pc.addEventListener("track", (e) => {
+      const stream = e.streams[0];
+      if (stream) setRemoteStream(stream);
+    });
+
+    if (offerObj) {
       try {
-        const answer = await connection.createAnswer();
-        await connection.setLocalDescription(answer);
-        socket?.emit("answer", { peerId, answer: connection.localDescription });
+        console.log("Setting remote description with offer:", offerObj.offer);
+        await pc.setRemoteDescription(
+          new RTCSessionDescription(offerObj.offer)
+        );
       } catch (error) {
-        console.error("Error creating answer:", error);
+        console.log("Error setting remote description:", error);
       }
-    })();
+    }
   };
-  const handleAnswer = ({
-    peerId,
-    answer,
-  }: {
-    peerId: string;
-    answer: RTCSessionDescription;
-  }) => {
-    const pc = peerConnections.current.get(peerId);
-    if (pc && answer.sdp) {
-      pc.setRemoteDescription(
-        new RTCSessionDescription({
-          type: answer.type,
-          sdp: answer.sdp,
-        })
+  const call = async () => {
+    try {
+      await fetchUserMedia();
+    } catch (error) {
+      console.log(error);
+    }
+    try {
+      await createPeerConnection();
+    } catch (error) {
+      console.log("error : men peerconnection ", error);
+    }
+    if (!peerConnection) {
+      const pc = new RTCPeerConnection(peerConfiguration);
+      setPeerConnection(pc);
+    }
+    try {
+      const offer = await peerConnection?.createOffer();
+      await peerConnection?.setLocalDescription(offer);
+      setDidIOffer(true);
+      // console.log("Emitting new offer:", offer); // Log the offer
+      // Emit offer to signaling server
+      socketRef.current?.emit("newOffer", offer);
+    } catch (err) {
+      console.log("Error creating offer:", err);
+    }
+  };
+
+  const answerOffer = async (offerObj) => {
+    console.log("Answering offer:", offerObj);
+    try {
+      await createPeerConnection(offerObj); // Ensure this sets the remote description correctly
+    } catch (error) {
+      console.log("Error in createPeerConnection:", error);
+      return; // Exit the function if there's an error
+    }
+
+    // Check if the peerConnection is in the correct state
+    if (
+      peerConnection &&
+      peerConnection.signalingState === "have-remote-offer"
+    ) {
+      try {
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        console.log("Emitting answer:", answer);
+        socketRef.current?.emit("newAnswer", {
+          offererUserName: offerObj.offererUserName,
+          answer,
+        });
+      } catch (err) {
+        console.log("Error creating answer:", err);
+      }
+    } else {
+      console.log(
+        "PeerConnection is not in the correct state to create an answer."
       );
     }
   };
-
-  const handleDisconnectPeer = ({ peerId }: { peerId: string }) => {
-    const pc = peerConnections.current.get(peerId);
-    if (pc) {
-      pc.close();
-    }
-    peerConnections.current.delete(peerId);
-    setRemoteStream(null);
-  };
-
-  const startBroadcast = () => {
-    if (socket) {
-      socket.emit("broadcaster");
-    }
-  };
-
-  const joinBroadcast = (broadcasterId: string) => {
-    if (socket) {
-      socket.emit("watcher", { broadcasterId });
-    }
-  };
-
-  const endCall = (peerId: string) => {
-    if (socket) {
-      socket.emit("disconnectPeer", { peerId });
-    }
-    const pc = peerConnections.current.get(peerId);
-    if (pc) {
-      pc.close();
-    }
-    peerConnections.current.delete(peerId);
-    setRemoteStream(null);
-  };
-
   return (
     <View style={styles.container}>
-      <Switch
-        trackColor={{ false: "#767577", true: "#81b0ff" }}
-        thumbColor={isEnabled ? "#f5dd4b" : "#f4f3f4"}
-        ios_backgroundColor="#3e3e3e"
-        onValueChange={toggleSwitch}
-        value={isEnabled}
-      />
-      {!!localStream && (
-        <RTCView
-          streamURL={localStream.toURL()}
-          style={{ width: 200, height: 200, marginVertical: 10 }}
-          mirror={true}
-        />
-      )}
-      {!!remoteStream && (
-        <RTCView
-          streamURL={remoteStream.toURL()}
-          style={{ width: 200, height: 200, marginVertical: 10 }}
-        />
-      )}
-      <Button title="Start Broadcast" onPress={startBroadcast} />
-      <Button
-        title="Join Broadcast"
-        onPress={() => joinBroadcast("broadcasterUserId")}
-      />
-      <Button title="End Call" onPress={() => endCall("peerUserId")} />
+      <Text>User: {userName}</Text>
+      <View style={styles.videoContainer}>
+        {localStream && (
+          <RTCView
+            ref={localVideoRef}
+            style={styles.video}
+            streamURL={localStream.toURL()} // Set the stream URL for local video
+            mirror={true} // Mirror local video
+          />
+        )}
+        {remoteStream && (
+          <RTCView
+            ref={remoteVideoRef}
+            style={styles.video}
+            streamURL={remoteStream.toURL()} // Set the stream URL for remote video
+          />
+        )}
+      </View>
+      <Button title="Call" onPress={call} />
+      <ScrollView style={styles.offersContainer}>
+        {offers.map((offer, index) => (
+          <Button
+            key={index}
+            title={`Answer ${offer.offererUserName}`}
+            onPress={() => answerOffer(offer)}
+            color="green"
+          />
+        ))}
+      </ScrollView>
     </View>
   );
 };
@@ -261,7 +214,22 @@ const VideoPage = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F5F5",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  videoContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+  },
+  video: {
+    width: 150,
+    height: 150,
+  },
+  offersContainer: {
+    marginTop: 20,
+    width: "100%",
   },
 });
-export default VideoPage;
+
+export default App;

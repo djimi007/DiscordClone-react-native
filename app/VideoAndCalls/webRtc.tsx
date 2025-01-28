@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { View, StyleSheet } from "react-native";
-import { serverUrl } from "@/utils/constants";
+import { View, StyleSheet, Text } from "react-native";
+import { configuration, serverUrl } from "@/utils/constants";
 import {
   mediaDevices,
   MediaStream,
@@ -10,23 +10,20 @@ import {
   RTCView,
 } from "react-native-webrtc";
 import { io, Socket } from "socket.io-client";
+import { hp, wp } from "@/utils/dimonsion";
 
 const VideoChat = () => {
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(
-    new Map()
-  );
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const peersRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const pendingCandidatesRef = useRef<Map<string, RTCIceCandidate[]>>(
-    new Map()
-  );
+  const pendingCandidatesRef = useRef<Map<string, RTCIceCandidate[]>>(new Map());
 
   useEffect(() => {
     const initMedia = async () => {
       try {
         const stream = await mediaDevices.getUserMedia({
-          audio: true,
+          audio: false,
           video: {
             facingMode: "user",
             width: { ideal: 640 },
@@ -34,6 +31,7 @@ const VideoChat = () => {
             frameRate: { ideal: 30 },
           },
         });
+
         setLocalStream(stream);
       } catch (error) {
         console.error("Media error:", error);
@@ -55,9 +53,13 @@ const VideoChat = () => {
     });
 
     socket.on("existingPeers", (peers: string[]) => {
-      peers.forEach((peerId) => {
-        if (peerId !== socket.id) createPeerConnection(peerId, false);
-      });
+      if (peers.length < 2) {
+        peers.forEach((peerId) => {
+          if (peerId !== socket.id) createPeerConnection(peerId, false);
+        });
+      } else {
+        console.warn("Room is full. Cannot join.");
+      }
     });
 
     socket.on("offer", handleOffer);
@@ -76,47 +78,55 @@ const VideoChat = () => {
   const createPeerConnection = async (peerId: string, isInitiator: boolean) => {
     if (peersRef.current.has(peerId)) return;
 
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-      ],
+    const pc = new RTCPeerConnection(configuration);
+
+    pc.addEventListener("icecandidate", (event) => {
+      if (event.candidate) {
+        console.log("ICE Candidate Details:", event.candidate);
+        socketRef.current?.emit("candidate", peerId, event.candidate);
+      }
     });
 
-    localStream
-      ?.getTracks()
-      .forEach((track) => pc.addTrack(track, localStream));
-    setupPeerConnectionHandlers(pc, peerId);
+    pc.addEventListener("icecandidateerror", (event) => {
+      console.error("ICE Candidate Error:", event);
+    });
+
+    pc.addEventListener("iceconnectionstatechange", () => {
+      console.log("Detailed ICE State:", {
+        state: pc.iceConnectionState,
+        signalingState: pc.signalingState,
+        connectionState: pc.connectionState,
+      });
+    });
+    localStream && localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+
+    setupPeerConnectionHandlers(pc);
 
     if (isInitiator) {
-      try {
-        const offer = await pc.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true,
-        });
-        await pc.setLocalDescription(offer);
-        socketRef.current?.emit("offer", peerId, offer);
-      } catch (err) {
-        console.error("Error creating offer:", err);
-        pc.close();
-      }
+      const createOfferWithRetry = async () => {
+        try {
+          const offer = await pc.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true,
+          });
+          await pc.setLocalDescription(offer);
+          socketRef.current?.emit("offer", peerId, pc.localDescription);
+        } catch (err) {
+          console.error("Offer creation failed, retrying...", err);
+          setTimeout(createOfferWithRetry, 1000);
+        }
+      };
+      createOfferWithRetry();
     }
 
     peersRef.current.set(peerId, pc);
   };
 
   const handleOffer = async (peerId: string, offer: RTCSessionDescription) => {
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-      ],
-    });
+    const pc = new RTCPeerConnection(configuration);
+    localStream?.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
-    localStream
-      ?.getTracks()
-      .forEach((track) => pc.addTrack(track, localStream));
-    setupPeerConnectionHandlers(pc, peerId);
+    setupPeerConnectionHandlers(pc);
 
     try {
       await pc.setRemoteDescription(offer);
@@ -130,17 +140,20 @@ const VideoChat = () => {
       pc.close();
     }
   };
-
   const handleCandidate = (peerId: string, candidate: RTCIceCandidate) => {
+    if (!candidate || !candidate.candidate) {
+      console.error("Invalid candidate received:", candidate);
+      return;
+    }
     const pc = peersRef.current.get(peerId);
-    if (pc?.remoteDescription) {
-      pc.addIceCandidate(candidate).catch((err) =>
+    if (pc && pc.remoteDescription) {
+      pc.addIceCandidate(new RTCIceCandidate(candidate)).catch((err) =>
         console.error("Error adding ICE candidate:", err)
       );
     } else {
-      const candidates = pendingCandidatesRef.current.get(peerId) || [];
-      candidates.push(candidate);
-      pendingCandidatesRef.current.set(peerId, candidates);
+      const pending = pendingCandidatesRef.current.get(peerId) || [];
+      pending.push(candidate);
+      pendingCandidatesRef.current.set(peerId, pending);
     }
   };
 
@@ -150,11 +163,7 @@ const VideoChat = () => {
       pc.close();
       peersRef.current.delete(peerId);
       pendingCandidatesRef.current.delete(peerId);
-      setRemoteStreams((prev) => {
-        const newMap = new Map(prev);
-        newMap.delete(peerId);
-        return newMap;
-      });
+      setRemoteStream(null);
     }
   };
 
@@ -162,7 +171,7 @@ const VideoChat = () => {
     const candidates = pendingCandidatesRef.current.get(peerId) || [];
     for (const candidate of candidates) {
       try {
-        await pc.addIceCandidate(candidate);
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
       } catch (err) {
         console.error("Error adding pending ICE candidate:", err);
       }
@@ -170,10 +179,7 @@ const VideoChat = () => {
     pendingCandidatesRef.current.delete(peerId);
   };
 
-  const handleAnswer = async (
-    peerId: string,
-    answer: RTCSessionDescription
-  ) => {
+  const handleAnswer = async (peerId: string, answer: RTCSessionDescription) => {
     const pc = peersRef.current.get(peerId);
     if (!pc) return;
 
@@ -187,24 +193,60 @@ const VideoChat = () => {
     }
   };
 
-  const setupPeerConnectionHandlers = (
-    pc: RTCPeerConnection,
-    peerId: string
-  ) => {
-    const remoteStream = new MediaStream();
-    const addedTracks = new Set();
-
+  const setupPeerConnectionHandlers = (pc: RTCPeerConnection) => {
     pc.addEventListener("track", (event) => {
       const track = event.track;
-      if (!track) return;
-      if (!addedTracks.has(track?.id)) {
-        remoteStream.addTrack(track!);
-        addedTracks.add(track?.id);
-        setRemoteStreams((prev) => new Map(prev).set(peerId, remoteStream));
+      if (track) {
+        const stream = event.streams[0];
+        console.log("Remote track received:", track.kind);
+        setRemoteStream(stream);
       }
+    });
+
+    pc.addEventListener("iceconnectionstatechange", () => {
+      console.log("ICE Connection State:", pc.iceConnectionState);
+      switch (pc.iceConnectionState) {
+        case "new":
+          console.log("ICE connection is new.");
+          break;
+        case "checking":
+          console.log("ICE connection is checking.");
+          break;
+        case "connected":
+          console.log("ICE connection established successfully.");
+          break;
+        case "completed":
+          console.log("ICE connection completed.");
+          break;
+        case "failed":
+          console.error("ICE connection failed.");
+          pc.restartIce();
+
+          break;
+        case "disconnected":
+          console.warn("ICE connection disconnected.");
+          break;
+        case "closed":
+          console.log("ICE connection closed.");
+          break;
+        default:
+          console.log("ICE connection state:", pc.iceConnectionState);
+      }
+    });
+    pc.addEventListener("iceconnectionstatechange", () => {
+      if (pc.iceConnectionState === "failed") {
+        // Initiate ICE restart
+        pc.restartIce();
+      }
+    });
+    pc.addEventListener("connectionstatechange", () => {
+      console.log("Peer Connection State:", pc.connectionState);
     });
   };
 
+  useEffect(() => {
+    console.log(remoteStream?.toURL());
+  }, [remoteStream]);
   return (
     <View style={styles.container}>
       {localStream && (
@@ -215,16 +257,13 @@ const VideoChat = () => {
           objectFit="cover"
         />
       )}
-      {Array.from(remoteStreams).map(([peerId, stream]) => (
-        <RTCView
-          key={peerId}
-          style={styles.remoteVideo}
-          streamURL={stream.toURL()}
-          objectFit="contain"
-          zOrder={1}
-          mirror={false}
-        />
-      ))}
+      {remoteStream ? (
+        <RTCView style={styles.remoteVideo} streamURL={remoteStream.toURL()} objectFit="cover" />
+      ) : (
+        <View style={styles.placeholderView}>
+          <Text>Waiting for remote video...</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -232,20 +271,26 @@ const VideoChat = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    padding: 8,
-  },
-  localVideo: {
-    width: 120,
-    height: 160,
-    margin: 4,
     backgroundColor: "#000",
   },
+  localVideo: {
+    position: "absolute",
+    bottom: 20,
+    right: 20,
+    width: 120,
+    height: 160,
+    zIndex: 10,
+    borderRadius: 8,
+    overflow: "hidden",
+  },
   remoteVideo: {
-    width: "48%",
-    height: 300,
-    margin: 4,
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  placeholderView: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
     backgroundColor: "#000",
   },
 });
